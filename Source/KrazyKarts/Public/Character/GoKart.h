@@ -6,6 +6,44 @@
 #include "GameFramework/Pawn.h"
 #include "GoKart.generated.h"
 
+
+// Receive to server
+USTRUCT()
+struct FGoKartMove
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY()
+	float Throttle;
+
+	UPROPERTY()
+	float SteeringThrow;
+
+	UPROPERTY()
+	float DeltaTime;
+
+	UPROPERTY()
+	float Time;
+};
+
+
+// Receive to client (only apply simulated proxy)
+USTRUCT()
+struct FGoKartState
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY()
+	FGoKartMove LastMove;
+
+	UPROPERTY()
+	FVector_NetQuantize10 Velocity;
+
+	UPROPERTY()
+	FTransform Transform;
+};
+
+
 UCLASS()
 class KRAZYKARTS_API AGoKart : public APawn
 {
@@ -52,22 +90,38 @@ private:
 	/* Ordinary car tires on concrete */
 	float RollingResistanceCoefficient = 0.015f;
 
+	UPROPERTY(ReplicatedUsing = OnRep_ServerState)
+	FGoKartState ServerState;
+
+	FVector Velocity;
+
 	float Throttle;
 
 	float SteeringThrow;
 
-	FVector Velocity;
+	TArray<FGoKartMove> UnacknowledgedMoves;
 
 
 private:
+	UFUNCTION()
+	void OnRep_ServerState();
+
 	UFUNCTION(Server, Reliable, WithValidation)
-	void Server_MoveForward(float Axis);
+	void Server_SendMove(FGoKartMove Move);
+
+	FGoKartMove CreateMove(float DeltaTime) const;
+
+	void ClearAcknowledgedMoves(const FGoKartMove& LastMove);
+
+	void SimulateMove(FGoKartMove  Move);
+
+	void MoveForward(float Axis);
 
 	void MoveRight(float Axis);
 
-	void UpdateLocationFromVelocity(const FVector &Translation);
+	void UpdateLocationFromVelocity(float DeltaTime);
 
-	void ApplyRotation(float DeltaTime);
+	void ApplyRotation(float DeltaTime, float SteeringThrow);
 
 	FVector GetAirResistance();
 
