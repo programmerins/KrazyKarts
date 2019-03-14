@@ -27,6 +27,29 @@ struct FGoKartState
 };
 
 
+struct FHermiteCubicSpline
+{
+	FVector StartLocation;
+	FVector	StartDerivative;
+	FVector EndLocation;
+	FVector EndDerivative;
+	
+	explicit FHermiteCubicSpline(FVector&& P0, FVector&& T0, FVector&& P1, FVector&& T1) :
+		StartLocation(P0), StartDerivative(T0), EndLocation(P1), EndDerivative(T1)
+	{ }
+
+	FORCEINLINE FVector InterpolateLocation(float LerpRatio) const
+	{
+		return FMath::CubicInterp(StartLocation, StartDerivative, EndLocation, EndDerivative, LerpRatio);
+	}
+
+	FORCEINLINE FVector InterpolateDerivative(float LerpRatio) const
+	{
+		return FMath::CubicInterpDerivative(StartLocation, StartDerivative, EndLocation, EndDerivative, LerpRatio);
+	}
+};
+
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class KRAZYKARTS_API UGoKartMovementReplicator final : public UActorComponent
 {
@@ -44,6 +67,9 @@ protected:
 
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+		
+	UFUNCTION(BlueprintCallable)
+	void SetMeshOffsetRoot(USceneComponent* Root) { MeshOffsetRoot = Root; }
 
 
 private:
@@ -53,9 +79,14 @@ private:
 	UPROPERTY()
 	UGoKartMovementCompoment* MovementComponent;
 
+	UPROPERTY()
+	USceneComponent* MeshOffsetRoot;
+
 	TArray<FGoKartMove> UnacknowledgedMoves;
 
 	FTransform ClientStartTransform;
+
+	FVector ClientStartVelocity;
 
 	float ClientTimeSinceUpdate;
 
@@ -80,4 +111,58 @@ private:
 	void ClearAcknowledgedMoves(const FGoKartMove& LastMove);
 
 	void DrawDebugReplicationInfo() const;
+
+
+	FORCEINLINE float GetVelocityToDerivative() const
+	{
+		return ClientTimeBetweenLastUpdates * 100.0f;
+	}
+
+
+	// wrapper func
+	FORCEINLINE FHermiteCubicSpline CreateSpline()
+	{
+		return FHermiteCubicSpline
+		(
+			ClientStartTransform.GetLocation(),
+			ClientStartVelocity * GetVelocityToDerivative(),
+			ServerState.Transform.GetLocation(),
+			ServerState.Velocity * GetVelocityToDerivative()
+		);
+	}
+
+
+	// wrapper func
+	FORCEINLINE void InterpolateLocation(const FHermiteCubicSpline& Spline, float LerpRatio) const
+	{
+		FVector NewLocation = Spline.InterpolateLocation(LerpRatio);
+
+		if (MeshOffsetRoot)
+		{
+			MeshOffsetRoot->SetWorldLocation(NewLocation);
+		}
+	}
+
+
+	// wrapper func
+	FORCEINLINE void InterpolateRotation(float LerpRatio) const
+	{
+		FQuat StartRotation = ClientStartTransform.GetRotation();
+		FQuat TargetRotation = ServerState.Transform.GetRotation();
+		FQuat NewRotation = FQuat::Slerp(StartRotation, TargetRotation, LerpRatio);
+ 
+		if (MeshOffsetRoot)
+		{
+			MeshOffsetRoot->SetWorldRotation(NewRotation);
+		}
+	}
+
+
+	// wrapper func
+	FORCEINLINE void InterpolateVelocity(const FHermiteCubicSpline& Spline, float LerpRatio) const
+	{
+		FVector NewDerivative = Spline.InterpolateDerivative(LerpRatio);
+		FVector NewVelocity = NewDerivative / GetVelocityToDerivative();
+		MovementComponent->SetVelocity(NewVelocity);
+	}
 };
