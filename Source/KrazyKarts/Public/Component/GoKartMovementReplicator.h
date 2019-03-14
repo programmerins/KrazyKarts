@@ -92,6 +92,8 @@ private:
 
 	float ClientTimeBetweenLastUpdates;
 
+	float ClientSimulatedTime;
+
 	
 private:
 	void ClientTick(float DeltaTime);

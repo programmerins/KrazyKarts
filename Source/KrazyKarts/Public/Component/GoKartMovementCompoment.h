@@ -24,6 +24,11 @@ struct FGoKartMove
 
 	UPROPERTY()
 	float Time;
+
+	bool IsVaild() const
+	{
+		return FMath::Abs(Throttle) <= 1.0f && FMath::Abs(SteeringThrow) <= 1.0f;
+	}
 };
 
 
